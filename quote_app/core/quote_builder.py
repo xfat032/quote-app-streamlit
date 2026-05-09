@@ -1375,6 +1375,7 @@ GENERIC_ACTIVITY_TERMS = {
     "主舞台活动",
     "互动活动体验",
 }
+GENERIC_ACTIVITY_EXCEPTIONS = {"灯光艺术展", "艺术展", "音乐会"}
 CONTAINER_SECTION_TITLES = {
     "活动内容",
     "活动内容规划",
@@ -2162,7 +2163,7 @@ def classify_section_candidate(name: str, context: str) -> str:
         return "process"
     if any(term in filter_source for term in MATERIAL_SECTION_TERMS):
         return "material"
-    if cleaned in CONTAINER_SECTION_TITLES or cleaned in GENERIC_ACTIVITY_TERMS or cleaned in SECTION_IGNORE_TITLES:
+    if cleaned in CONTAINER_SECTION_TITLES or (cleaned in GENERIC_ACTIVITY_TERMS and cleaned not in GENERIC_ACTIVITY_EXCEPTIONS) or cleaned in SECTION_IGNORE_TITLES:
         return "container"
 
     if cleaned == "环境装置" and any(term in source for term in ["展览", "展区", "展览内容", "中文括号活动/展区标题", "板块标题"]):
@@ -2181,7 +2182,7 @@ def classify_section_candidate(name: str, context: str) -> str:
 
     if cleaned in MAIN_SECTION_TITLES:
         return "activity"
-    if cleaned in ACTIVITY_SECTION_CANDIDATES and cleaned not in GENERIC_ACTIVITY_TERMS:
+    if cleaned in ACTIVITY_SECTION_CANDIDATES and (cleaned not in GENERIC_ACTIVITY_TERMS or cleaned in GENERIC_ACTIVITY_EXCEPTIONS):
         return "activity"
     if any(term in cleaned for term in ACTIVITY_FORM_TERMS):
         return "activity"
@@ -2207,7 +2208,7 @@ def classify_section_level(name: str, reason: str = "", confidence: str = "") ->
         return "noise"
     if reason == "报价项反推活动板块" and cleaned not in PUBLIC_QUOTE_SECTIONS and cleaned != "人员类及其他":
         return "main"
-    if cleaned in CONTAINER_SECTION_TITLES or cleaned in GENERIC_ACTIVITY_TERMS or cleaned in SECTION_IGNORE_TITLES:
+    if cleaned in CONTAINER_SECTION_TITLES or (cleaned in GENERIC_ACTIVITY_TERMS and cleaned not in GENERIC_ACTIVITY_EXCEPTIONS) or cleaned in SECTION_IGNORE_TITLES:
         return "noise"
     candidate_type = classify_section_candidate(cleaned, reason)
     if candidate_type not in {"activity", "sub_activity"}:
@@ -2242,7 +2243,7 @@ def classify_section_level(name: str, reason: str = "", confidence: str = "") ->
         return "main"
     if reason in {"板块标题", "延展活动标题"}:
         return "main"
-    if cleaned in ACTIVITY_SECTION_CANDIDATES and cleaned not in GENERIC_ACTIVITY_TERMS:
+    if cleaned in ACTIVITY_SECTION_CANDIDATES and (cleaned not in GENERIC_ACTIVITY_TERMS or cleaned in GENERIC_ACTIVITY_EXCEPTIONS):
         return "main"
     if confidence == "strong":
         return "main"
@@ -2257,7 +2258,11 @@ def _is_forbidden_section_name(name: str) -> bool:
         return True
     if len(cleaned) > 18 and cleaned not in ACTIVITY_SECTION_CANDIDATES:
         return True
-    if any(word in cleaned for word in SECTION_FORBIDDEN_WORDS):
+    for word in SECTION_FORBIDDEN_WORDS:
+        if word not in cleaned:
+            continue
+        if word == "品牌" and any(term in cleaned for term in ACTIVITY_FORM_TERMS):
+            continue
         return True
     if cleaned.startswith(SECTION_STATEMENT_PREFIXES):
         return True
@@ -2445,7 +2450,7 @@ def _scan_specific_section_names(text: str) -> list[str]:
     specific_candidates = [
         candidate
         for candidate in ACTIVITY_SECTION_CANDIDATES
-        if candidate not in GENERIC_ACTIVITY_TERMS and candidate not in CONTAINER_SECTION_TITLES and len(candidate) >= 4
+        if (candidate not in GENERIC_ACTIVITY_TERMS or candidate in GENERIC_ACTIVITY_EXCEPTIONS) and candidate not in CONTAINER_SECTION_TITLES and len(candidate) >= 4
     ]
     for candidate in specific_candidates:
         position = canonical_text.find(candidate)
@@ -2538,7 +2543,7 @@ def normalize_section_name(raw_name: str) -> str | None:
     if len(cleaned) > 18 and cleaned not in ACTIVITY_SECTION_CANDIDATES:
         return None
 
-    if cleaned in GENERIC_ACTIVITY_TERMS or cleaned in SECTION_IGNORE_TITLES:
+    if (cleaned in GENERIC_ACTIVITY_TERMS and cleaned not in GENERIC_ACTIVITY_EXCEPTIONS) or cleaned in SECTION_IGNORE_TITLES:
         return None
 
     if _is_forbidden_section_name(cleaned):
@@ -2560,7 +2565,7 @@ def _is_noise_line(text: str) -> tuple[bool, str]:
         return True, "非活动板块章节/说明"
     if text in SECTION_IGNORE_TITLES or text in NOISE_INFO_TERMS:
         return True, "基础信息/说明标题"
-    if text in GENERIC_ACTIVITY_TERMS:
+    if text in GENERIC_ACTIVITY_TERMS and text not in GENERIC_ACTIVITY_EXCEPTIONS:
         return True, "泛词容器标题"
     candidate_type = classify_section_candidate(text, text)
     if candidate_type != "activity":
@@ -2609,7 +2614,7 @@ def _classify_section_line(
     if _is_container_heading(normalized) or _is_container_heading(cleaned):
         return "container", "容器标题"
 
-    if cleaned in GENERIC_ACTIVITY_TERMS:
+    if cleaned in GENERIC_ACTIVITY_TERMS and cleaned not in GENERIC_ACTIVITY_EXCEPTIONS:
         return "noise", "通用框架词"
 
     if _starts_with_any(cleaned, SUB_SECTION_TITLES):
