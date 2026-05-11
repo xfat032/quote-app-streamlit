@@ -46,6 +46,79 @@ LONG_TABLE_ALLOWED_KEYWORDS = {
 }
 TEA_SEAT_ALLOWED_KEYWORDS = {"茶席", "茶寮", "围炉煮茶", "茶饮空间"}
 TEA_ONLY_FOOD_ALIASES = {"围炉煮茶"}
+DINING_DIRECT_TERMS = {"餐饮体验", "餐饮服务", "食品留样"}
+DINING_EXECUTION_TERMS = {
+    "提供",
+    "供应",
+    "售卖",
+    "销售",
+    "餐饮品牌",
+    "餐饮区",
+    "就餐区",
+    "餐标",
+    "餐券",
+    "餐食",
+    "餐品",
+    "用餐",
+    "就餐",
+}
+DINING_STRONG_EXECUTION_TERMS = {
+    "餐饮体验",
+    "餐饮服务",
+    "提供餐饮",
+    "供应餐食",
+    "售卖餐饮",
+    "餐标",
+    "餐券",
+    "用餐",
+    "就餐",
+    "食品留样",
+}
+DINING_PRODUCT_CONTEXT_TERMS = {
+    "制作体验",
+    "制作环节",
+    "点心制作",
+    "器具",
+    "视觉来源",
+    "文创产品",
+    "文创元素",
+    "纹样",
+    "贴纸",
+    "徽章",
+    "冰箱贴",
+    "手机挂件",
+    "杯垫",
+    "明信片",
+    "帆布袋",
+    "礼盒",
+    "伴手礼",
+    "会客厅",
+    "习俗",
+}
+TEA_BREAK_EXECUTION_TERMS = {
+    "茶歇",
+    "茶歇服务",
+    "课间",
+    "休息区",
+    "会议",
+    "培训",
+    "提供",
+    "配置",
+    "安排",
+    "咖啡",
+    "水果",
+}
+TEA_BREAK_PRODUCT_CONTEXT_TERMS = {
+    "礼盒",
+    "伴手礼",
+    "摊位",
+    "美食摊位",
+    "传统糕点",
+    "老爸茶点心",
+    "点心制作",
+    "制作体验",
+    "产品",
+}
 DIMENSION_PATTERNS = [
     re.compile(r"(\d+(?:\.\d+)?)\s*(m|米)\s*[×xX*]\s*(\d+(?:\.\d+)?)\s*(m|米)"),
     re.compile(r"(?:长|长度)\s*(\d+(?:\.\d+)?)\s*(m|米)[，,、\s]*(?:宽|宽度|纵深|深度|深)\s*(\d+(?:\.\d+)?)\s*(m|米)"),
@@ -385,8 +458,48 @@ def _is_shadowed_by_strict_module(text: str, trigger: str, standard_items: list[
     return False
 
 
+def _is_allowed_dining_hit(matched_text: str, context: str) -> bool:
+    if matched_text in DINING_DIRECT_TERMS:
+        return True
+
+    has_execution_context = _has_any_keyword(context, DINING_EXECUTION_TERMS)
+    has_product_context = _has_any_keyword(context, DINING_PRODUCT_CONTEXT_TERMS)
+    if has_product_context and not _has_any_keyword(context, DINING_STRONG_EXECUTION_TERMS):
+        return False
+
+    return has_execution_context
+
+
+def _is_allowed_tea_break_hit(matched_text: str, context: str) -> bool:
+    if matched_text == "茶歇" or matched_text == "茶歇服务":
+        return True
+    if _has_any_keyword(context, TEA_BREAK_PRODUCT_CONTEXT_TERMS):
+        return False
+    return _has_any_keyword(context, TEA_BREAK_EXECUTION_TERMS)
+
+
 def _is_allowed_explicit_hit(standard_item: str, matched_text: str, context: str, full_text: str) -> bool:
-    if any(term in context for term in ["活动调性", "活动目标", "项目目标", "项目背景", "整体思路", "测试意图", "方案写法", "等形式"]):
+    if any(
+        term in context
+        for term in [
+            "活动调性",
+            "活动目标",
+            "项目目标",
+            "项目背景",
+            "整体思路",
+            "核心创意",
+            "活动亮点",
+            "场景美学化",
+            "体验游戏化",
+            "内容复合化",
+            "空间设计",
+            "执行设计",
+            "重点测试",
+            "测试意图",
+            "方案写法",
+            "等形式",
+        ]
+    ):
         return False
 
     if standard_item == "阅读区布置":
@@ -404,16 +517,20 @@ def _is_allowed_explicit_hit(standard_item: str, matched_text: str, context: str
     if standard_item == "音频二维码点位":
         return matched_text in AUDIO_QR_ALLOWED_TRIGGERS
 
-    if standard_item == "餐饮体验" and matched_text == "老爸茶" and "老爸茶习俗" in context:
-        return False
+    if standard_item == "餐饮体验":
+        return _is_allowed_dining_hit(matched_text, context)
 
-    if standard_item == "茶歇服务" and matched_text == "点心" and any(term in context for term in ["老爸茶点心", "美食摊位", "传统糕点"]):
-        return False
+    if standard_item == "茶歇服务":
+        return _is_allowed_tea_break_hit(matched_text, context)
 
     if standard_item == "帐篷摊位" and matched_text in {"市集", "市集活动"}:
         if any(term in context for term in ["生活消费", "消费场景", "传播力"]):
             return False
-        if not any(term in context for term in ["设置", "配置", "摊位", "帐篷", "市集区", "美食", "文创", "手作", "招募", "商户", "摊主", "布置"]):
+        if not any(term in context for term in ["设置", "配置", "摊位", "帐篷", "市集区", "招募", "商户", "摊主", "布置"]):
+            return False
+
+    if standard_item == "互动规则牌" and matched_text == "互动规则":
+        if any(term in context for term in ["统一互动规则", "传播话题", "完整体验动线"]):
             return False
 
     if standard_item == "趣味互动游戏" and matched_text == "手作体验":

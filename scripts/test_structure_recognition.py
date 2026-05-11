@@ -209,6 +209,54 @@ def test_generic_inferred_sections_do_not_override_confirmed_sections() -> None:
         raise AssertionError(f"venue name 图书馆 should not create 图书配置: {items}")
 
 
+def test_food_words_without_service_context_do_not_create_dining_items() -> None:
+    text = """
+活动内容规划
+（一）非遗互动体验
+设置老爸茶点心制作体验，通过简化制作环节让市民了解海口休闲生活方式。
+（二）非遗文创潮玩
+以老爸茶器具、海南粉食材等元素为视觉来源，开发贴纸、徽章、杯垫、明信片等轻量文创产品。
+（三）城市伴手礼摊位
+设置茶点礼盒、香包和帆布袋等轻量产品。
+"""
+    rules = load_rules(QUOTE_APP_DIR / "data" / "rules_config.json")
+    quote_rows = build_quote_rows(
+        extract_quote_items(text, rules),
+        QUOTE_APP_DIR / "data" / "price_db.xlsx",
+        text,
+        activity_sections=extract_activity_sections(text),
+    )
+    leaked = [
+        {
+            "quote_section": row.get("quote_section", ""),
+            "标准项目": row.get("标准项目", ""),
+            "evidence_text": row.get("evidence_text", ""),
+        }
+        for row in quote_rows
+        if str(row.get("标准项目", "")) in {"餐饮体验", "茶歇服务"}
+    ]
+    if leaked:
+        raise AssertionError(f"food culture/product wording should not create dining rows: {leaked}")
+
+
+def test_food_service_context_still_creates_dining_item() -> None:
+    text = """
+活动内容规划
+（一）海鲜美食市集
+设置20个美食摊位，提供餐饮服务和食品留样。
+"""
+    rules = load_rules(QUOTE_APP_DIR / "data" / "rules_config.json")
+    quote_rows = build_quote_rows(
+        extract_quote_items(text, rules),
+        QUOTE_APP_DIR / "data" / "price_db.xlsx",
+        text,
+        activity_sections=extract_activity_sections(text),
+    )
+    items = {str(row.get("标准项目", "")) for row in quote_rows}
+    if "餐饮体验" not in items:
+        raise AssertionError(f"餐饮服务执行语境应识别餐饮体验: {items}")
+
+
 def main() -> None:
     tests = [
         test_region_titles,
@@ -221,6 +269,8 @@ def main() -> None:
         test_promo_noise_filtered,
         test_nonheritage_content_boundary_stops_before_promo,
         test_generic_inferred_sections_do_not_override_confirmed_sections,
+        test_food_words_without_service_context_do_not_create_dining_items,
+        test_food_service_context_still_creates_dining_item,
     ]
     for test in tests:
         test()
