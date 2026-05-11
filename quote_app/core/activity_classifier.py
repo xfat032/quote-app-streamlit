@@ -95,6 +95,55 @@ ACTIVITY_TYPE_TEMPLATES: dict[str, dict[str, list[str]]] = {
 }
 
 
+READING_TYPE_STRONG_KEYWORDS = {
+    "阅读",
+    "共读",
+    "书签",
+    "有声阅读",
+    "阅读角",
+    "心得墙",
+    "书海寻宝",
+    "故事墙",
+    "双语图书",
+    "图书阅读区",
+}
+
+TRAINING_TYPE_STRONG_KEYWORDS = {
+    "专题培训",
+    "培训课程",
+    "培训内容",
+    "培训安排",
+    "培训计划",
+    "培训对象",
+    "培训目标",
+    "参训",
+    "课程",
+    "授课",
+    "讲师",
+    "导师",
+    "分组研讨",
+    "工作坊",
+    "情景演练",
+    "结业测评",
+    "开班",
+}
+
+
+def _should_keep_activity_type(activity_type: str, text: str, matched_keywords: list[str]) -> bool:
+    if activity_type == "阅读文化类":
+        return any(keyword in text for keyword in READING_TYPE_STRONG_KEYWORDS)
+
+    if activity_type == "培训内训类":
+        if any(keyword in text for keyword in TRAINING_TYPE_STRONG_KEYWORDS):
+            return True
+        weak_training_mentions = ["工作人员培训", "人员培训", "员工培训", "志愿者培训"]
+        if matched_keywords == ["培训"] and any(term in text for term in weak_training_mentions):
+            return False
+        return len(matched_keywords) >= 2
+
+    return True
+
+
 def _has_text_signal(text: str, standard_item: str, rule: dict[str, Any]) -> bool:
     trigger_keywords = SUGGESTION_TRIGGER_KEYWORDS.get(standard_item)
     if trigger_keywords is not None:
@@ -111,6 +160,8 @@ def classify_activity_types(text: str) -> list[dict[str, Any]]:
     for activity_type, config in ACTIVITY_TYPE_TEMPLATES.items():
         matched_keywords = [keyword for keyword in config["keywords"] if keyword in text]
         if not matched_keywords:
+            continue
+        if not _should_keep_activity_type(activity_type, text, matched_keywords):
             continue
         results.append(
             {

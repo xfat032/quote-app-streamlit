@@ -386,6 +386,9 @@ def _is_shadowed_by_strict_module(text: str, trigger: str, standard_items: list[
 
 
 def _is_allowed_explicit_hit(standard_item: str, matched_text: str, context: str, full_text: str) -> bool:
+    if any(term in context for term in ["活动调性", "活动目标", "项目目标", "项目背景", "整体思路", "测试意图", "方案写法", "等形式"]):
+        return False
+
     if standard_item == "阅读区布置":
         if matched_text not in READING_LAYOUT_ALLOWED_TRIGGERS:
             return False
@@ -394,10 +397,27 @@ def _is_allowed_explicit_hit(standard_item: str, matched_text: str, context: str
     if standard_item == "图书配置":
         if matched_text not in BOOK_CONFIG_ALLOWED_TRIGGERS:
             return False
+        if matched_text == "图书" and "图书馆" in context:
+            return False
         return not any(term in context or term in full_text for term in BOOK_CONFIG_BLOCK_TERMS)
 
     if standard_item == "音频二维码点位":
         return matched_text in AUDIO_QR_ALLOWED_TRIGGERS
+
+    if standard_item == "餐饮体验" and matched_text == "老爸茶" and "老爸茶习俗" in context:
+        return False
+
+    if standard_item == "茶歇服务" and matched_text == "点心" and any(term in context for term in ["老爸茶点心", "美食摊位", "传统糕点"]):
+        return False
+
+    if standard_item == "帐篷摊位" and matched_text in {"市集", "市集活动"}:
+        if any(term in context for term in ["生活消费", "消费场景", "传播力"]):
+            return False
+        if not any(term in context for term in ["设置", "配置", "摊位", "帐篷", "市集区", "美食", "文创", "手作", "招募", "商户", "摊主", "布置"]):
+            return False
+
+    if standard_item == "趣味互动游戏" and matched_text == "手作体验":
+        return False
 
     return True
 

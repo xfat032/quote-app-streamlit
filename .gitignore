@@ -16,8 +16,13 @@ quote_app/.streamlit/secrets.toml
 quote_app/output/*
 !quote_app/output/.gitkeep
 
-# Local regression scripts and generated sample plans
-scripts/
+# Local backups
+backups/
+
+# Generated regression sample plans
+scripts/samples/generated_regression/
+scripts/samples/generated_long_regression/
+scripts/samples/generated_deep_regression/
 
 # Local logs and temporary files
 *.log
