@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
+from zipfile import ZipFile
+import xml.etree.ElementTree as ET
 
 import pdfplumber
 from docx import Document
@@ -20,7 +22,11 @@ def _decode_text(data: bytes) -> str:
 
 
 def _read_docx(data: bytes) -> str:
-    document = Document(BytesIO(data))
+    try:
+        document = Document(BytesIO(data))
+    except Exception:
+        return _read_docx_xml_fallback(data)
+
     parts: list[str] = []
 
     for paragraph in document.paragraphs:
@@ -33,6 +39,21 @@ def _read_docx(data: bytes) -> str:
             if cells:
                 parts.append("\t".join(cells))
 
+    return "\n".join(parts)
+
+
+def _read_docx_xml_fallback(data: bytes) -> str:
+    """Extract text from malformed docx files without following broken media rels."""
+    with ZipFile(BytesIO(data)) as archive:
+        document_xml = archive.read("word/document.xml")
+
+    root = ET.fromstring(document_xml)
+    ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    parts: list[str] = []
+    for paragraph in root.findall(".//w:p", ns):
+        text = "".join(node.text or "" for node in paragraph.findall(".//w:t", ns)).strip()
+        if text:
+            parts.append(text)
     return "\n".join(parts)
 
 

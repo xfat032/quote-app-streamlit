@@ -357,6 +357,8 @@ PROMOTION_KEYWORDS = [
     "活动记录",
     "官方媒体宣传",
     "社交平台传播",
+    "合作品牌联合宣传",
+    "品牌联合宣传",
     "小红书推广",
     "抖音推广",
     "微博话题",
@@ -1868,6 +1870,16 @@ PUBLIC_BUILD_KEYWORDS = [
     "签到墙",
     "铁马围挡",
 ]
+ORPHAN_PUBLIC_BUILD_ITEMS = {
+    "帐篷摊位",
+}
+ORPHAN_PEOPLE_OR_OTHER_ITEMS = {
+    "文创礼品",
+    "活动贴纸",
+    "NPC互动服务",
+    "节目演出",
+    "赛事活动",
+}
 PEOPLE_OR_OTHER_KEYWORDS = [
     "主持人",
     "执行人员",

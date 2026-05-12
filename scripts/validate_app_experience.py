@@ -374,8 +374,8 @@ def run_scheme_file_scan(args: argparse.Namespace) -> CheckResult | None:
             label = ", ".join(str(path) for path in scan_paths)
             return CheckResult("scheme file scan", "WARN", time.perf_counter() - started, f"no files matched: {label}")
 
-        failed: list[str] = []
-        warned: list[str] = []
+        failed: set[str] = set()
+        warned: set[str] = set()
         detail_lines: list[str] = []
         for path in files:
             try:
@@ -389,7 +389,11 @@ def run_scheme_file_scan(args: argparse.Namespace) -> CheckResult | None:
                     1 for row in quote_rows if str(row.get("quote_section", "")) == "未归属板块"
                 )
                 issues: list[str] = []
-                if diagnostics.get("has_short_range"):
+                text_is_too_short = len(text.strip()) < args.min_scan_chars
+                if text_is_too_short:
+                    warned.add(path.name)
+                    issues.append("too_short_source")
+                if diagnostics.get("has_short_range") and not text_is_too_short:
                     issues.append("short_activity_range")
                 if diagnostics.get("directory_like"):
                     issues.append("directory_like_range")
@@ -398,7 +402,7 @@ def run_scheme_file_scan(args: argparse.Namespace) -> CheckResult | None:
                 if unassigned_count > args.max_unassigned:
                     issues.append(f"unassigned>{args.max_unassigned}")
                 if not quote_rows:
-                    warned.append(path.name)
+                    warned.add(path.name)
                     issues.append("no_quote_rows")
                 line = (
                     f"{path.name}: chars={len(text)} main={main_count} quote_rows={len(quote_rows)} "
@@ -406,11 +410,11 @@ def run_scheme_file_scan(args: argparse.Namespace) -> CheckResult | None:
                     f"issues={','.join(issues) if issues else 'none'}"
                 )
                 detail_lines.append(line)
-                severe = [issue for issue in issues if issue != "no_quote_rows"]
+                severe = [issue for issue in issues if issue not in {"no_quote_rows", "too_short_source"}]
                 if severe:
-                    failed.append(path.name)
+                    failed.add(path.name)
             except Exception as exc:
-                failed.append(path.name)
+                failed.add(path.name)
                 detail_lines.append(f"{path.name}: read_or_scan_error={exc}")
 
         status = "FAIL" if failed else "WARN" if warned else "PASS"
@@ -459,6 +463,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recursive-scan", action="store_true", help="扫描目录时递归子目录")
     parser.add_argument("--max-main-sections", type=int, default=30, help="扫描方案时允许的最大 main 板块数")
     parser.add_argument("--max-unassigned", type=int, default=0, help="扫描方案时允许的最大未归属项数量")
+    parser.add_argument("--min-scan-chars", type=int, default=500, help="低于该字数的扫描文件按残片/大纲警告处理")
     parser.add_argument("--max-scan-detail-lines", type=int, default=80, help="控制扫描详情输出行数")
     parser.add_argument("--skip-server-smoke", action="store_true", help="跳过真实 Streamlit 本地服务启动检查")
     parser.add_argument("--fail-on-warning", action="store_true", help="有 WARN 时也返回失败退出码")

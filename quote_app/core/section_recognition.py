@@ -1290,6 +1290,11 @@ def assign_quote_section(
             return "未归属板块"
         return "人员类及其他"
 
+    if not matched_section and item_name in ORPHAN_PUBLIC_BUILD_ITEMS:
+        return "其他搭建类"
+    if not matched_section and item_name in ORPHAN_PEOPLE_OR_OTHER_ITEMS:
+        return "人员类及其他"
+
     if not matched_section and item_name in {"证书奖杯", "IP周边制作", "印章", "通行证"}:
         return "人员类及其他"
 

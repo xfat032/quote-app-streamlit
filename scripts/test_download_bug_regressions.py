@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -12,6 +13,7 @@ if str(QUOTE_APP_DIR) not in sys.path:
 from core.extractor import extract_quote_items
 from core.normalizer import load_rules
 from core.quote_builder import build_quote_rows, diagnose_activity_content_ranges, extract_activity_sections
+from core.text_reader import read_text_from_path
 
 
 RULES_PATH = QUOTE_APP_DIR / "data" / "rules_config.json"
@@ -149,6 +151,83 @@ def test_common_support_items_do_not_remain_unassigned() -> None:
         raise AssertionError(f"support items should not stay unassigned: {unassigned}")
 
 
+def test_orphan_explicit_items_get_public_or_other_sections() -> None:
+    text = """
+年味创意礼品、非遗手工摊位和特色摊位构成入口氛围。
+现场设置品牌联动、贴纸投票、NPC大巡游、星光音乐会和轻量竞赛。
+"""
+    activity_sections = [
+        {
+            "name": "非遗分享会",
+            "start": 10000,
+            "end": 11000,
+            "selected": True,
+            "section_level": "main",
+        }
+    ]
+    rules = load_rules(RULES_PATH)
+    quote_rows = build_quote_rows(
+        extract_quote_items(text, rules),
+        PRICE_DB_PATH,
+        text,
+        activity_sections=activity_sections,
+    )
+    unassigned = [row for row in quote_rows if str(row.get("quote_section", "")) == "未归属板块"]
+    if unassigned:
+        raise AssertionError(f"orphan explicit items should not stay unassigned: {unassigned}")
+
+    section_by_item = {str(row.get("标准项目", "")): str(row.get("quote_section", "")) for row in quote_rows}
+    if section_by_item.get("合作品牌联合宣传") != "活动宣传":
+        raise AssertionError(f"brand collaboration should be promotion: {section_by_item}")
+    if section_by_item.get("帐篷摊位") != "其他搭建类":
+        raise AssertionError(f"orphan tent stalls should be public build: {section_by_item}")
+
+
+def test_broken_docx_null_relationship_fallback(tmp_dir: Path | None = None) -> None:
+    temp_dir = Path("/tmp/quote_app_regression_docx")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    path = temp_dir / "broken_null_relationship.docx"
+    with ZipFile(path, "w", ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>""",
+        )
+        archive.writestr(
+            "_rels/.rels",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>""",
+        )
+        archive.writestr(
+            "word/_rels/document.xml.rels",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../NULL"/>
+</Relationships>""",
+        )
+        archive.writestr(
+            "word/document.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>海南三月三活动方案</w:t></w:r></w:p>
+    <w:p><w:r><w:t>活动内容</w:t></w:r></w:p>
+    <w:p><w:r><w:t>开幕式</w:t></w:r></w:p>
+  </w:body>
+</w:document>""",
+        )
+
+    text = read_text_from_path(path)
+    if "海南三月三活动方案" not in text or "开幕式" not in text:
+        raise AssertionError(f"broken docx fallback failed: {text}")
+
+
 def main() -> None:
     tests = [
         test_meta_titles_do_not_become_main_sections,
@@ -156,6 +235,8 @@ def main() -> None:
         test_pdf_table_fragments_do_not_become_main_sections,
         test_short_inline_activity_summary_is_not_used_as_content_range,
         test_common_support_items_do_not_remain_unassigned,
+        test_orphan_explicit_items_get_public_or_other_sections,
+        test_broken_docx_null_relationship_fallback,
     ]
     for test in tests:
         test()
