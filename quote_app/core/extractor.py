@@ -51,7 +51,6 @@ DINING_EXECUTION_TERMS = {
     "提供",
     "供应",
     "售卖",
-    "销售",
     "餐饮品牌",
     "餐饮区",
     "就餐区",
@@ -484,6 +483,10 @@ def _is_allowed_explicit_hit(standard_item: str, matched_text: str, context: str
         for term in [
             "活动调性",
             "活动目标",
+            "活动目的",
+            "活动概述",
+            "主题释义",
+            "主题解读",
             "项目目标",
             "项目背景",
             "整体思路",
@@ -501,6 +504,50 @@ def _is_allowed_explicit_hit(standard_item: str, matched_text: str, context: str
         ]
     ):
         return False
+
+    if standard_item == "手作体验材料" and matched_text in {"标本", "贝壳", "画笔", "基础材料", "图样参考"}:
+        return any(term in context for term in ["制作", "体验", "手作", "DIY", "材料", "拓印", "创作", "研习", "课程"])
+
+    if standard_item == "通行证" and matched_text in {"活动地图", "游览地图"}:
+        return any(term in context for term in ["制作", "印制", "设计", "发放", "领取", "配置", "设置", "地图墙", "折页", "手册"])
+
+    if standard_item == "印章" and matched_text == "集章":
+        return any(term in context for term in ["印章", "盖章", "加盖", "收集", "集齐", "集满"])
+    if standard_item == "印章" and "记忆印章" in context:
+        return False
+
+    if standard_item == "IP周边制作" and matched_text in {"卡片", "周边"}:
+        if any(term in context for term in ["祝福", "挂上", "随风", "亲子家庭合影", "事业部"]):
+            return False
+
+    if standard_item == "启动仪式道具" and "活动内容：" in context:
+        return False
+
+    if standard_item == "节目演出" and matched_text in {"非遗演绎", "音乐会", "舞蹈演绎"}:
+        if any(term in context for term in ["活动形式", "传播路径", "推动", "跨界演变", "模式", "组织架构"]):
+            return False
+
+    if standard_item == "赛事活动" and any(term in context for term in ["报道看点", "评奖机制", "学习成果"]):
+        return False
+
+    if standard_item == "趣味互动游戏" and matched_text == "游园会":
+        compact_context = re.sub(r"\s+", "", context)
+        if any(term in compact_context for term in ["活动洞察", "活动概述", "活动名称"]) or "Activity profile" in context or "有限公司" in context:
+            return False
+        return any(term in context for term in ["任务", "游戏", "挑战", "互动", "设置", "领取", "兑奖", "参与"])
+
+    if standard_item == "互动规则牌" and matched_text in {"活动攻略", "活动规则"}:
+        if any(term in context for term in ["公众号软文", "倒计时海报", "宣传片", "话题"]):
+            return False
+
+    if standard_item == "帐篷摊位" and matched_text in {"市集", "市集活动"}:
+        if "市集区域" in context and not any(term in context for term in ["摊位", "帐篷", "招募", "商户", "摊主"]):
+            return False
+
+    if standard_item in {"灯光设备", "灯光音响套装"} and matched_text in {"灯光", "射灯", "暖场音乐"}:
+        if any(term in context for term in ["每一缕", "现代诠释", "主题", "诗意", "隐约"]):
+            return False
+        return any(term in context for term in ["设备", "舞台", "灯光系统", "灯光音响", "音响", "射灯", "控台", "配置", "演出", "表演"])
 
     if standard_item == "阅读区布置":
         if matched_text not in READING_LAYOUT_ALLOWED_TRIGGERS:

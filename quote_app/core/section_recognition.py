@@ -43,6 +43,17 @@ def _is_activity_range_stop(line: str) -> bool:
     return heading in ACTIVITY_CONTENT_STOP_TITLES or any(heading.startswith(title) for title in ACTIVITY_CONTENT_STOP_TITLES)
 
 
+def _is_short_inline_activity_summary(text: str) -> bool:
+    excerpt = str(text or "").strip()
+    if len(excerpt) >= 180:
+        return False
+    first_line = next((line.strip() for line in excerpt.splitlines() if line.strip()), "")
+    if not re.search(r"活动内容[：:]", first_line):
+        return False
+    lines = [line.strip() for line in excerpt.splitlines() if line.strip()]
+    return len(lines) <= 4
+
+
 def extract_activity_content_ranges(text: str) -> list[tuple[int, int]]:
     ranges: list[tuple[int, int]] = []
     active_start: int | None = None
@@ -66,7 +77,11 @@ def extract_activity_content_ranges(text: str) -> list[tuple[int, int]]:
     if active_start is not None and active_start < len(text):
         ranges.append((active_start, len(text)))
 
-    return ranges
+    return [
+        (start, end)
+        for start, end in ranges
+        if not _is_short_inline_activity_summary(text[start:end])
+    ]
 
 
 def diagnose_activity_content_ranges(text: str) -> dict[str, Any]:
@@ -149,11 +164,24 @@ def _is_continuous_short_activity_title(name: str) -> bool:
     return any(keyword in cleaned for keyword in CONTINUOUS_SHORT_TITLE_KEYWORDS) or cleaned in ACTIVITY_SECTION_CANDIDATES
 
 
+def _compact_spaces(text: str) -> str:
+    return re.sub(r"\s+", "", str(text or ""))
+
+
 def _is_date_or_time_section(text: str) -> bool:
     cleaned = str(text or "").strip()
+    compact = _compact_spaces(cleaned)
     return bool(
         TIME_LINE_RE.search(cleaned)
+        or TIME_LINE_RE.search(compact)
         or re.fullmatch(r"\d{4}", cleaned)
+        or re.fullmatch(r"\d+\s*[A-Za-z]", cleaned)
+        or re.fullmatch(r"\d+(?:\s+\d+)+", cleaned)
+        or re.fullmatch(r"(?:[.。…]\s*){3,}", cleaned)
+        or re.fullmatch(r"\d{1,2}\s*月\s*\d{1,2}\s*日\s*[-—~～至到]+\s*(?:\d{1,2}\s*月\s*)?\d{1,2}\s*日", cleaned)
+        or re.fullmatch(r"\d{1,2}\s*月\s*\d{1,2}\s*日", cleaned)
+        or re.fullmatch(r"\d{1,2}/\d{1,2}(?:\s*[-—~～至到]+\s*\d{1,2}/\d{1,2})?", cleaned)
+        or re.fullmatch(r"\d{1,2}/\d{1,2}(?:\s*[-—~～至到]+\s*\d{1,2}/\d{1,2})?", compact)
         or re.fullmatch(r"\d{1,2}\s+\d{1,2}\.\d{1,2}", cleaned)
         or re.fullmatch(r"\d{1,2}(?:\.\d{1,2}){1,2}", cleaned)
         or re.fullmatch(r"\d{1,2}\.\d{1,2}\s*[-—~～]\s*\d{1,2}(?:\.\d{1,2})?", cleaned)
@@ -165,6 +193,72 @@ def _starts_with_any(text: str, values: set[str] | tuple[str, ...]) -> bool:
     return any(text == value or text.startswith(f"{value}-") or text.startswith(f"{value}－") or text.startswith(f"{value} ") for value in values)
 
 
+def _looks_like_spaced_table_fragment(text: str) -> bool:
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return True
+    if re.match(r"^\d{1,2}/\d{1,2}\s+", cleaned):
+        return True
+    tokens = [token for token in cleaned.split() if token]
+    if len(tokens) >= 3 and all(len(token) <= 2 for token in tokens):
+        return True
+    if len(tokens) >= 3 and any(len(token) == 1 for token in tokens):
+        return True
+    if re.search(r"\s+(户外|室内)$", cleaned):
+        return True
+    if cleaned.endswith(("、", "/", "／")):
+        return True
+    if "、" in cleaned and not cleaned.endswith(("会", "赛", "式", "节", "市集", "体验", "展", "展区", "活动", "行动", "工作坊")):
+        return True
+    if " 的" in cleaned or "的 " in cleaned:
+        return True
+    if re.search(r"\d+\s+(?:海口|三亚|北京|上海|广州|贵阳|云南|贵州|出版社|书店|咖啡|营地|文创馆|艺术馆)", cleaned):
+        return True
+    return False
+
+
+def _has_real_activity_form(text: str) -> bool:
+    cleaned = str(text or "").strip()
+    if cleaned in MAIN_SECTION_TITLES or cleaned in ACTIVITY_SECTION_CANDIDATES:
+        return True
+    if any(keyword in cleaned for keyword in STRONG_ACTIVITY_KEYWORDS):
+        return True
+    for term in ACTIVITY_FORM_TERMS:
+        if term not in cleaned:
+            continue
+        if term == "展" and not cleaned.endswith(("展", "展区")):
+            continue
+        if term in {"培训", "课程", "复盘"} and not cleaned.endswith((term, "会", "营", "课", "研讨", "工作坊")):
+            continue
+        return True
+    return False
+
+
+def _is_structured_area_activity(name: str, source: str) -> bool:
+    cleaned = str(name or "").strip()
+    if not any(term in source for term in ["区域标题", "展区标题"]):
+        return False
+    if not cleaned.endswith(("区", "展区", "区域")):
+        return False
+    return any(term in cleaned for term in ["市集", "舞台", "互动", "体验", "非遗", "展", "阅读", "音乐", "手作"])
+
+
+def _has_named_activity_container_context(source: str) -> bool:
+    return any(
+        term in source
+        for term in [
+            "主晚会",
+            "主题晚会",
+            "启动晚会",
+            "颁奖晚会",
+            "文艺晚会",
+            "迎宾晚会",
+            "主活动",
+            "主题活动",
+        ]
+    )
+
+
 def classify_section_candidate(name: str, context: str) -> str:
     cleaned = str(name or "").strip()
     source = f"{cleaned} {context or ''}"
@@ -172,6 +266,8 @@ def classify_section_candidate(name: str, context: str) -> str:
     if not cleaned:
         return "noise"
     if _is_date_or_time_section(cleaned):
+        return "noise"
+    if _looks_like_spaced_table_fragment(cleaned):
         return "noise"
     if re.fullmatch(r"(?:第)?[一二三四五六七八九十\d]+场", cleaned):
         return "process"
@@ -205,7 +301,7 @@ def classify_section_candidate(name: str, context: str) -> str:
         return "activity"
     if cleaned in ACTIVITY_SECTION_CANDIDATES and (cleaned not in GENERIC_ACTIVITY_TERMS or cleaned in GENERIC_ACTIVITY_EXCEPTIONS):
         return "activity"
-    if any(term in cleaned for term in ACTIVITY_FORM_TERMS):
+    if _has_real_activity_form(cleaned):
         return "activity"
     structured_context = (
         "活动内容区域识别" in source
@@ -215,13 +311,17 @@ def classify_section_candidate(name: str, context: str) -> str:
         or "课程/环节标题" in source
         or ("展区标题" in source and "中文括号活动/展区标题" not in source)
     )
-    if structured_context and len(cleaned) <= 25:
+    if structured_context and len(cleaned) <= 25 and (
+        _has_real_activity_form(cleaned)
+        or _is_structured_area_activity(cleaned, source)
+        or _has_named_activity_container_context(source)
+    ):
         return "activity"
 
     return "noise"
 
 
-def classify_section_level(name: str, reason: str = "", confidence: str = "") -> str:
+def classify_section_level(name: str, reason: str = "", confidence: str = "", candidate_type_hint: str = "") -> str:
     cleaned = str(name or "").strip()
     if not cleaned:
         return "noise"
@@ -232,7 +332,7 @@ def classify_section_level(name: str, reason: str = "", confidence: str = "") ->
         return "main"
     if cleaned in CONTAINER_SECTION_TITLES or (cleaned in GENERIC_ACTIVITY_TERMS and cleaned not in GENERIC_ACTIVITY_EXCEPTIONS) or cleaned in SECTION_IGNORE_TITLES:
         return "noise"
-    candidate_type = classify_section_candidate(cleaned, reason)
+    candidate_type = candidate_type_hint or classify_section_candidate(cleaned, reason)
     if candidate_type not in {"activity", "sub_activity"}:
         return "noise"
     if cleaned in MATERIAL_SECTION_TERMS:
@@ -277,6 +377,8 @@ def _is_forbidden_section_name(name: str) -> bool:
     if not cleaned:
         return True
     if cleaned in SECTION_FORBIDDEN_TITLES:
+        return True
+    if _looks_like_spaced_table_fragment(cleaned):
         return True
     if len(cleaned) > 18 and cleaned not in ACTIVITY_SECTION_CANDIDATES:
         return True
@@ -583,6 +685,8 @@ def _is_noise_line(text: str) -> tuple[bool, str]:
         return True, "空行"
     if _is_date_or_time_section(text):
         return True, "日期/时间"
+    if _looks_like_spaced_table_fragment(text):
+        return True, "表格/断行碎片"
     if _is_forbidden_section_name(text):
         return True, "非活动板块章节/说明"
     if text in SECTION_IGNORE_TITLES or text in NOISE_INFO_TERMS:
@@ -742,7 +846,7 @@ def _make_activity_section(
     candidate_type = classify_section_candidate(normalized_name, f"{raw_name} {source_text} {reason} {channel}")
     if candidate_type not in {"activity", "sub_activity"}:
         return None
-    section_level = classify_section_level(normalized_name, reason, confidence)
+    section_level = classify_section_level(normalized_name, reason, confidence, candidate_type)
     if section_level == "noise":
         return None
     if section_level == "sub" and candidate_type == "activity":
@@ -1107,7 +1211,22 @@ def find_section_for_match(match_start: int | None, activity_sections: list[dict
     return None
 
 
+def find_nearby_section_for_match(
+    match_start: int | None,
+    activity_sections: list[dict[str, Any]],
+    max_distance: int = 600,
+) -> dict[str, Any] | None:
+    if match_start is None or match_start < 0:
+        return None
+    for section in activity_sections:
+        distance = int(section.get("start", 0)) - int(match_start)
+        if 0 < distance <= max_distance:
+            return section
+    return None
+
+
 def prepare_confirmed_activity_sections(activity_sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    max_end = max((int(section.get("end", 0)) for section in activity_sections), default=0)
     confirmed = [
         dict(section)
         for section in activity_sections
@@ -1115,8 +1234,8 @@ def prepare_confirmed_activity_sections(activity_sections: list[dict[str, Any]])
     ]
     confirmed.sort(key=lambda item: int(item.get("start", 0)))
     for index, section in enumerate(confirmed):
-        next_start = confirmed[index + 1]["start"] if index + 1 < len(confirmed) else section.get("end", section.get("start", 0))
-        section["end"] = next_start
+        next_start = confirmed[index + 1]["start"] if index + 1 < len(confirmed) else None
+        section["end"] = next_start if next_start is not None else max(int(section.get("end", 0)), max_end)
         section["order"] = index + 1
     return confirmed
 
@@ -1147,6 +1266,8 @@ def assign_quote_section(
 ) -> str:
     item_name = _normalize_item_name(item.get("标准项目", item.get("项目", "")))
     matched_section = find_section_for_match(match_start, activity_sections)
+    if not matched_section:
+        matched_section = find_nearby_section_for_match(match_start, activity_sections)
 
     if (
         str(item.get("evidence_type", "")) == "module_completion"
@@ -1167,6 +1288,9 @@ def assign_quote_section(
     if is_people_or_other_item(item_name):
         if not matched_section and not activity_sections:
             return "未归属板块"
+        return "人员类及其他"
+
+    if not matched_section and item_name in {"证书奖杯", "IP周边制作", "印章", "通行证"}:
         return "人员类及其他"
 
     if matched_section:
