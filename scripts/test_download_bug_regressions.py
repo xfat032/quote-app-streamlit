@@ -105,6 +105,68 @@ def test_pdf_table_fragments_do_not_become_main_sections() -> None:
     )
 
 
+def test_reading_resource_tables_do_not_become_main_sections() -> None:
+    text = """
+活动内容
+1. 第二届“岛屿来信”图书市集
+设置图书市集、摊位导视、签到服务台和互动规则牌。
+2. “断网阅读”挑战赛
+设置挑战规则、阅读打卡区和工作人员引导。
+3. 知名作家分享与交流会
+设置分享会舞台、嘉宾桌椅、灯光音响和摄影摄像。
+6 全域特色阅读活动 6项
+阅读活动
+全时特色阅读活动 四项
+
+八、活动相关资源
+（一）参展书店名单（资源持续整合中）预计35家
+序号 日期/时间 活动主题
+8 4/24-4/26 涂鸦DIY签到区
+5 4/23 分三场开展
+6 4/20-4/26 “脸书”挑战
+7 4/20-4/26 “阅读存折”打卡
+8 4月 书香长廊
+3 科学出版社 4 贵阳 空兽书店
+4 人民文学出版社 6 《天涯》杂志
+5 北京大学出版社 8 辛生书屋
+6 海南出版社 14 海口-新华书店
+7 yiyou艺术馆 4 太阳河咖啡
+8 舒与树 贵州 6 锦绣织贝 黎锦
+9 裂织布品 云南 16
+10 周更新 网红艺术家 8 随也
+11 王彬 10
+"""
+    main = _main_names(text)
+    _assert_contains(
+        "reading resource real main",
+        main,
+        ["第二届“岛屿来信”图书市集", "“断网阅读”挑战赛", "知名作家分享与交流会"],
+    )
+    _assert_not_contains(
+        "reading resource table main",
+        main,
+        [
+            "全域特色阅读活动 6项",
+            "阅读活动",
+            "全时特色阅读活动 四项",
+            "4/24-4/26 涂鸦DIY签到区",
+            "4/23 分三场开展",
+            "4/20-4/26 “脸书”挑战",
+            "4/20-4/26 “阅读存折”打卡",
+            "4月 书香长廊",
+            "科学出版社 4 贵阳 空兽书店",
+            "人民文学出版社 6 《天涯》杂志",
+            "北京大学出版社 8 辛生书屋",
+            "海南出版社 14 海口-新华书店",
+            "yiyou艺术馆 4 太阳河咖啡",
+            "舒与树 贵州 6 锦绣织贝 黎锦",
+            "裂织布品 云南 16",
+            "周更新 网红艺术家 8 随也",
+            "王彬 10",
+        ],
+    )
+
+
 def test_short_inline_activity_summary_is_not_used_as_content_range() -> None:
     text = """
 活动内容：启动仪式、村游玩法地图、村理人圆桌会、“村游”市集，乡土手作体验、荒野大地餐桌、音乐live、城市主理人计划、“村游”巴士、沙滩音乐会等
@@ -233,6 +295,7 @@ def main() -> None:
         test_meta_titles_do_not_become_main_sections,
         test_visual_material_and_schedule_titles_do_not_become_main_sections,
         test_pdf_table_fragments_do_not_become_main_sections,
+        test_reading_resource_tables_do_not_become_main_sections,
         test_short_inline_activity_summary_is_not_used_as_content_range,
         test_common_support_items_do_not_remain_unassigned,
         test_orphan_explicit_items_get_public_or_other_sections,

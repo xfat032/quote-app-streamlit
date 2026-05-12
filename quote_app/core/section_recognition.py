@@ -199,10 +199,16 @@ def _looks_like_spaced_table_fragment(text: str) -> bool:
         return True
     if re.match(r"^\d{1,2}/\d{1,2}\s+", cleaned):
         return True
+    if re.match(r"^\d{1,2}/\d{1,2}\s*[-—~～至到]+\s*\d{1,2}/\d{1,2}\s+", cleaned):
+        return True
+    if re.match(r"^\d{1,2}\s*月\s+\S+", cleaned):
+        return True
     tokens = [token for token in cleaned.split() if token]
     if len(tokens) >= 3 and all(len(token) <= 2 for token in tokens):
         return True
     if len(tokens) >= 3 and any(len(token) == 1 for token in tokens):
+        return True
+    if re.fullmatch(r"[\u4e00-\u9fa5]{2,4}\s+\d{1,3}(?:\s*(?:[.。…]{2,}|…+))?", cleaned):
         return True
     if re.search(r"\s+(户外|室内)$", cleaned):
         return True
@@ -213,6 +219,9 @@ def _looks_like_spaced_table_fragment(text: str) -> bool:
     if " 的" in cleaned or "的 " in cleaned:
         return True
     if re.search(r"\d+\s+(?:海口|三亚|北京|上海|广州|贵阳|云南|贵州|出版社|书店|咖啡|营地|文创馆|艺术馆)", cleaned):
+        return True
+    table_terms = ("出版社", "书店", "书屋", "图书馆", "咖啡", "营地", "文创馆", "艺术馆", "文创", "黎锦", "海口", "贵阳", "云南", "贵州")
+    if any(term in cleaned for term in table_terms) and re.search(r"(?:^|\s)\d{1,3}(?:\s|$)", cleaned):
         return True
     return False
 
@@ -281,6 +290,8 @@ def classify_section_candidate(name: str, context: str) -> str:
     if any(term in filter_source for term in MATERIAL_SECTION_TERMS):
         return "material"
     if cleaned in CONTAINER_SECTION_TITLES or (cleaned in GENERIC_ACTIVITY_TERMS and cleaned not in GENERIC_ACTIVITY_EXCEPTIONS) or cleaned in SECTION_IGNORE_TITLES:
+        return "container"
+    if "活动" in cleaned and re.search(r"(?:\s|^)[一二三四五六七八九十\d]+项$", cleaned):
         return "container"
 
     if cleaned == "环境装置" and any(term in source for term in ["展览", "展区", "展览内容", "中文括号活动/展区标题", "板块标题"]):

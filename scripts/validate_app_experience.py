@@ -5,6 +5,7 @@ import contextlib
 import datetime as dt
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -58,6 +59,23 @@ FULL_EXTRA_TESTS = [
     "test_long_scheme_samples.py",
 ]
 SCAN_SUFFIXES = {".txt", ".docx", ".pdf"}
+SKIP_SCAN_NAME_PREFIXES = ("~$", ".~", "._")
+SUSPECT_MAIN_TABLE_TERMS = (
+    "出版社",
+    "书店",
+    "书屋",
+    "图书馆",
+    "咖啡",
+    "营地",
+    "文创馆",
+    "艺术馆",
+    "文创",
+    "黎锦",
+    "海口",
+    "贵阳",
+    "云南",
+    "贵州",
+)
 
 
 @dataclass
@@ -77,6 +95,32 @@ def _tail(text: str, max_lines: int = 35) -> str:
 
 def _format_duration(seconds: float) -> str:
     return f"{seconds:.2f}s"
+
+
+def _is_suspect_main_section_name(name: str) -> bool:
+    cleaned = str(name or "").strip()
+    if not cleaned:
+        return False
+    if re.match(r"^\d{1,2}/\d{1,2}(?:\s*[-—~～至到]+\s*\d{1,2}/\d{1,2})?\s+", cleaned):
+        return True
+    if re.match(r"^\d{1,2}\s*月\s+\S+", cleaned):
+        return True
+    if re.fullmatch(r"[\u4e00-\u9fa5]{2,4}\s+\d{1,3}(?:\s*(?:[.。…]{2,}|…+))?", cleaned):
+        return True
+    if any(term in cleaned for term in SUSPECT_MAIN_TABLE_TERMS) and re.search(r"(?:^|\s)\d{1,3}(?:\s|$)", cleaned):
+        return True
+    return False
+
+
+def _suspect_main_section_names(sections: list[dict]) -> list[str]:
+    names: list[str] = []
+    for section in sections:
+        if str(section.get("section_level", "")) != "main":
+            continue
+        name = str(section.get("name", "")).strip()
+        if _is_suspect_main_section_name(name):
+            names.append(name)
+    return names
 
 
 def _run_command(name: str, command: list[str], cwd: Path, timeout: int) -> CheckResult:
@@ -345,6 +389,8 @@ def _iter_scan_files(paths: Iterable[Path], after: dt.datetime | None, recursive
         for candidate in candidates:
             if candidate.suffix.lower() not in SCAN_SUFFIXES:
                 continue
+            if candidate.name.startswith(SKIP_SCAN_NAME_PREFIXES):
+                continue
             if after_ts is not None and candidate.stat().st_mtime < after_ts:
                 continue
             selected.append(candidate)
@@ -385,6 +431,7 @@ def run_scheme_file_scan(args: argparse.Namespace) -> CheckResult | None:
                 quote_rows = build_quote_rows(extracted_rows, price_db_path, text, activity_sections=sections)
                 diagnostics = diagnose_activity_content_ranges(text)
                 main_count = sum(1 for section in sections if str(section.get("section_level", "")) == "main")
+                suspect_main = _suspect_main_section_names(sections)
                 unassigned_count = sum(
                     1 for row in quote_rows if str(row.get("quote_section", "")) == "未归属板块"
                 )
@@ -399,6 +446,8 @@ def run_scheme_file_scan(args: argparse.Namespace) -> CheckResult | None:
                     issues.append("directory_like_range")
                 if main_count > args.max_main_sections:
                     issues.append(f"main_count>{args.max_main_sections}")
+                if suspect_main:
+                    issues.append("suspect_main_section")
                 if unassigned_count > args.max_unassigned:
                     issues.append(f"unassigned>{args.max_unassigned}")
                 if not quote_rows:
@@ -409,6 +458,8 @@ def run_scheme_file_scan(args: argparse.Namespace) -> CheckResult | None:
                     f"unassigned={unassigned_count} ranges={diagnostics.get('range_count', 0)} "
                     f"issues={','.join(issues) if issues else 'none'}"
                 )
+                if suspect_main:
+                    line += f" suspect_main={' | '.join(suspect_main[:5])}"
                 detail_lines.append(line)
                 severe = [issue for issue in issues if issue not in {"no_quote_rows", "too_short_source"}]
                 if severe:
